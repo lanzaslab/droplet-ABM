@@ -165,6 +165,8 @@ people-own [
   rememberPatch         ; Sets a patch that people will remember, so that they may return to it later on.
   symptomatic?          ; Logical variable describing if people are coughing to spread the contagion. If TRUE, spread will be dictated by cough_airflow-angle, cough_spread-dist.mean, and cough_spread-dist.sd parameter values. If FALSE, but infectius? is TRUE, spread will be dictated by speak_airflow-angle, speak_spread-dist.mean, and speak_spread-dist.sd parameter values.
   timesteps_exposed     ; Running count of the number of timesteps when an agent was exposed to >= 1 infectious virion.
+  vaccinated?           ; Logical variable describing if people have been vaccinated against the pathogen of interest.
+  protectedByVaccine?   ; Logical variable describing if people can be infected by a pathogen even if they are vaccinated.
 
 ]
 
@@ -645,6 +647,8 @@ to setup
       set mask? FALSE ; initially sprout people not wearing masks
       set symptomatic? FALSE ; initially sprout only healthy people
       set timesteps_exposed 0 ; initially there is no chance of being on a contaminated patch.
+      set vaccinated? FALSE ; initially only sprout unvaccinated people.
+      set protectedByVaccine? FALSE ; initially only sprout unvaccinated people.
 
       let risk-change? random-float 1 ; pull a random number between zero and 1
 
@@ -674,6 +678,42 @@ to setup
       ]
 
     ]
+
+    ; vaccinate people
+
+    if(vacc-proportion > 0)[ ;if people have a chance to be vaccinated, then some may have their vaccinated? value updated.
+
+      ask people [
+
+        let vaccinateMe random-float 1 ; pull a random number between zero and 1
+        if(vaccinateMe <= vacc-proportion)[ ; if vaccinateMe is less than or equal to vacc-proportion, then person's vaccinated? value is changed to TRUE.
+
+          set vaccinated? TRUE ; change the vaccinated value
+
+        ]
+      ]
+
+      ask people with [vaccinated? = TRUE] [ ;if people are vaccinated, we give them no chance to have protective immunity
+
+      if(vacc-immunity > 0)[ ; if vaccination confers protective immunity (which, presumably it should in most cases), then we allow vaccinated people the chance to be protected
+
+        let protectWithVaccine? random-float 1 ; pull a random number between zero and 1
+        if(protectWithVaccine? <= vacc-immunity)[ ; if protectWithVaccine? is less than or equal to vacc-immunity, then person's protectedByVaccine? value is changed to TRUE.
+
+          set protectedByVaccine? TRUE ; change the protection value
+
+        ]
+      ]
+    ]
+
+    ]
+
+    ask people with [protectedByVaccine? = TRUE] [ ;if people are protected from infection, we give them no chance to be infected
+
+      set exposure-risk 0 ; remove the risk of exposure for people protected by vaccinations
+
+    ]
+
 
     ; designate infectious agents
 
@@ -1167,6 +1207,17 @@ to infect ;try to spread the infection
       let airflow-angle 0 ; we have to create the airflow-angle object before the following ifelse statement, but the value will be immediately changed therein
       let coughSizeDistr 0 ; we first state that we should NOT base the droplet-cluster size on the coughing size probability distribution (i.e., we base it on the speaking probability). If the infectious individual coughs, we update this number.
       let dropletNum 0 ; we have to create the dropletNum object before the following ifelse statement, but the value will be immediately changed therein
+      let vaccineDropletModProportion 0 ; we have to create the accineDropletModProportion object before the following ifelse statement, but the value will be immediately changed therein
+
+    ifelse(vaccinated? = TRUE)[ ; if infectious individuals are vaccinated the may be less infectious (i.e., produce fewer virions) than their unvaccinated counterparts. This only true if vacc-virionRiskReduction > 0.
+
+      set vaccineDropletModProportion (1 - vacc-virionRiskReduction) ; designated the proportional reduction of virions produced. The number of droplets produced will be multiplied by this number. (Note: that this has the same effect on infectiousness as multiplying the virionRisk, however virionRisk calculations are carried out at the patch level. Patches cannot be vaccinated, only individyals can. Thus, we must reduce the produced number of droplets instead.)
+
+    ][ ; if individual is not vaccinated
+
+      set vaccineDropletModProportion 1 ; if individual is not vaccinated, dropletNum will be multiplied by 1
+
+    ]
 
       ifelse(symptomatic? = TRUE) ; Here we ensure we sample from the appropriate log-normal distributions for symptomatic and asymptomatic people.
       [ ; if people are symptomatic
@@ -1203,7 +1254,7 @@ to infect ;try to spread the infection
 
       ]
 
-      set dropletNum (dropletNum * expectorate-risk) ; if individuals are wearing masks, the number of droplets they expel is modified by expectorate-risk (Note that if they are not wearing masks expectorate-risk is 1)
+      set dropletNum (dropletNum * expectorate-risk * vaccineDropletModProportion) ; if individuals are wearing masks, the number of droplets they expel is modified by expectorate-risk (Note that if they are not wearing masks expectorate-risk is 1). Additionally, if individuals are vaccinated, the number of droplets they produce may be reduced
 
       let patchCount count patches in-cone spread.dist airflow-angle ; count the number of patches in the cone of infection
       ;let contamPatchCount random patchCount ; Randomly decide the number of patches in the cone of infection over which the total number of droplets will be evenly distributed.
@@ -1918,10 +1969,10 @@ to testQuanta ;determine the number of people that will be infected if the numbe
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-1338
-292
-1706
-661
+1587
+291
+1835
+540
 -1
 -1
 40.0
@@ -1935,9 +1986,9 @@ GRAPHICS-WINDOW
 0
 1
 0
-8
+5
 0
-8
+5
 0
 0
 1
@@ -1950,7 +2001,7 @@ INPUTBOX
 99
 256
 grid-height
-9.0
+6.0
 1
 0
 Number
@@ -1961,7 +2012,7 @@ INPUTBOX
 173
 256
 grid-width
-9.0
+6.0
 1
 0
 Number
@@ -2023,7 +2074,7 @@ INPUTBOX
 98
 487
 n
-135.0
+36.0
 1
 0
 Number
@@ -2034,7 +2085,7 @@ INPUTBOX
 338
 601
 social-distance
-0.0
+2.0
 1
 0
 Number
@@ -2067,16 +2118,16 @@ INPUTBOX
 338
 541
 maskRisk-mod
-0.1
+0.75
 1
 0
 Number
 
 INPUTBOX
-655
-221
-784
-281
+856
+220
+985
+280
 cough_spread-dist.mean
 5.0
 1
@@ -2084,10 +2135,10 @@ cough_spread-dist.mean
 Number
 
 INPUTBOX
-784
-221
-901
-281
+985
+220
+1102
+280
 cough_spread-dist.sd
 0.256
 1
@@ -2095,10 +2146,10 @@ cough_spread-dist.sd
 Number
 
 PLOT
-1331
-57
-1498
-213
+1580
+56
+1747
+212
 Total Infected
 time (mins)
 infected people
@@ -2113,20 +2164,20 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot totalInfected"
 
 TEXTBOX
-1812
-11
-2454
-206
+2061
+10
+2703
+205
 MODEL OUTPUTS: (these are the global variables that can be retrieved for analysis following simulations)\n\nfirstInfectTime - Time (i.e., tick) at which the first successful transmission event occurs. \n\ntotalInfected    -    Total number of infected people over the course of the simulation (i.e., running sum).\n\ntotalInfected.list    -    Total number of infected people at each tick.\n\navg.dist - Average interpersonal distance at a given tick.\n\navg.exposures - Average count of instances when susceptible agents were within a cone of exposure.\n\navg.exposureTime - Average number of timesteps when susceptible agents were within ≥ 1 cone of exposure. \n\n\n
 10
 0.0
 1
 
 INPUTBOX
-548
-221
-656
-281
+749
+220
+857
+280
 cough_airflow-angle
 35.0
 1
@@ -2134,10 +2185,10 @@ cough_airflow-angle
 Number
 
 MONITOR
-1330
-12
-1562
-57
+1579
+11
+1811
+56
 Number of symptomatic individuals
 num_symptomatic
 17
@@ -2145,10 +2196,10 @@ num_symptomatic
 11
 
 INPUTBOX
-548
-280
-662
-340
+749
+279
+863
+339
 speak_airflow-angle
 63.5
 1
@@ -2156,10 +2207,10 @@ speak_airflow-angle
 Number
 
 INPUTBOX
-661
-280
-797
-340
+862
+279
+998
+339
 speak_spread-dist.mean
 0.55
 1
@@ -2167,10 +2218,10 @@ speak_spread-dist.mean
 Number
 
 INPUTBOX
-796
-280
-915
-340
+997
+279
+1116
+339
 speak_spread-dist.sd
 0.068
 1
@@ -2178,10 +2229,10 @@ speak_spread-dist.sd
 Number
 
 TEXTBOX
-1513
-63
-1746
-258
+1762
+62
+1995
+257
 COLOR LEGEND\n\nPeople:\n\nRed - symptomatic\nPink - asymptomatic\nGreen - susceptible\nOrange - infected\n\nPatches:\n\nCyan - uncontaminated\nMagenta - droplet contaminated. Darkness scales with level of infectiousness. Incredibly contaminated patches will appear black\n
 10
 0.0
@@ -2193,16 +2244,16 @@ INPUTBOX
 339
 482
 mod-proportion
-0.0
+1.0
 1
 0
 Number
 
 INPUTBOX
-750
-161
-845
-221
+951
+160
+1046
+220
 cough_frequency
 0.19
 1
@@ -2226,16 +2277,16 @@ INPUTBOX
 98
 606
 symp-pr
-1.0
+0.0
 1
 0
 Number
 
 MONITOR
-1561
-12
-1800
-57
+1810
+11
+2049
+56
 Number of asymptomatic individuals
 num_asymptomatic
 17
@@ -2243,31 +2294,31 @@ num_asymptomatic
 11
 
 CHOOSER
-550
-583
-671
-628
+751
+582
+872
+627
 mod_group
 mod_group
 "sus" "inf" "sus_inf"
 2
 
 INPUTBOX
-548
-340
-680
-400
+749
+339
+881
+399
 speak_dropletNum.mean
-1000.0
+142000.0
 1
 0
 Number
 
 INPUTBOX
-679
-340
-799
-400
+880
+339
+1000
+399
 speak_dropletNum.sd
 0.0
 1
@@ -2275,21 +2326,21 @@ speak_dropletNum.sd
 Number
 
 INPUTBOX
-797
-340
-933
-400
+998
+339
+1134
+399
 cough_dropletNum.mean
-1000.0
+142000.0
 1
 0
 Number
 
 INPUTBOX
-933
-340
-1054
-400
+1134
+339
+1255
+399
 cough_dropletNum.sd
 0.0
 1
@@ -2330,12 +2381,12 @@ vol_B
 Number
 
 INPUTBOX
-1016
-160
-1104
-220
+1217
+159
+1305
+219
 dropletDecay
-0.9
+0.0105
 1
 0
 Number
@@ -2352,10 +2403,10 @@ face-northward
 -1000
 
 INPUTBOX
-550
-493
-662
-553
+751
+492
+863
+552
 personPerPatch-cap
 2.0
 1
@@ -2402,7 +2453,7 @@ SWITCH
 778
 ventilation
 ventilation
-0
+1
 1
 -1000
 
@@ -2484,10 +2535,10 @@ equallySpaceVents
 -1000
 
 INPUTBOX
-548
-162
-631
-222
+749
+161
+832
+221
 diffusionRate
 0.0015
 1
@@ -2495,10 +2546,10 @@ diffusionRate
 Number
 
 SWITCH
-556
-728
-682
-761
+757
+727
+883
+760
 evalQuanta
 evalQuanta
 1
@@ -2506,10 +2557,10 @@ evalQuanta
 -1000
 
 MONITOR
-1361
-76
-1418
-121
+1610
+75
+1667
+120
 num
 totalInfected
 0
@@ -2517,31 +2568,31 @@ totalInfected
 11
 
 SWITCH
-550
-552
-671
-585
+751
+551
+872
+584
 showArrows
 showArrows
-0
+1
 1
 -1000
 
 CHOOSER
-548
-399
-714
-444
+749
+398
+915
+443
 speak_dropletSizeDistr
 speak_dropletSizeDistr
 "chao" "meanlog.1" "meanlog.2" "meanlog.3" "meanlog.4" "meanlog.5"
 0
 
 CHOOSER
-714
-399
-881
-444
+915
+398
+1082
+443
 cough_dropletSizeDistr
 cough_dropletSizeDistr
 "chao" "meanlog.1" "meanlog.2" "meanlog.3" "meanlog.4" "meanlog.5"
@@ -2748,10 +2799,10 @@ The proportion of droplets (0 - 1) exhaled/inhaled by mask wearers.
 1
 
 TEXTBOX
-678
-551
-881
-588
+879
+550
+1082
+587
 Control if users want to see arrows denoting the direction of airflow when simulating ventilation effects.
 9
 0.0
@@ -2838,50 +2889,50 @@ The probability that inhalation of a virion will result in infection for a susce
 1
 
 TEXTBOX
-548
-18
-698
-36
+749
+17
+899
+35
 Stable inputs
 14
 0.0
 1
 
 TEXTBOX
-548
-39
-835
-129
+749
+38
+1036
+128
 These parameters generally reflect real-world droplet dynamics and other parameters that are less likely to be changed, regardless of the simulated scenario. See Farthing et al. 2021 - the paper wherein we introduced this model, for a detailed description of value determination. Categories are shown in red.
 11
 0.0
 1
 
 TEXTBOX
-637
-173
-744
-210
+838
+172
+945
+209
 Rate (%/tick) at which droplets move to neighboring patches.
 9
 0.0
 1
 
 TEXTBOX
-670
-504
-820
-537
+871
+503
+1021
+536
 Maximum number of people allowed in a single patch at any given time.
 9
 0.0
 1
 
 TEXTBOX
-678
-592
-840
-625
+879
+591
+1041
+624
 Dictates whether infectious people only, susceptible people only, or both wear masks. 
 9
 0.0
@@ -2908,120 +2959,120 @@ Height of individuals (m) within the simulation (represents height from which ex
 1
 
 TEXTBOX
-548
-137
-698
-158
+749
+136
+899
+157
 Droplet dynamics
 13
 13.0
 1
 
 TEXTBOX
-550
-464
-700
-482
+751
+463
+901
+481
 Other
 13
 13.0
 1
 
 TEXTBOX
-852
-172
-1002
-205
+1053
+171
+1203
+204
 Probabilty (0 - 1) that symptomatic infectious individuals will cough each tick. 
 9
 0.0
 1
 
 TEXTBOX
-907
-227
-1057
-271
+1108
+226
+1258
+270
 Angle (degree), mean and standard-deviation distance (m) of droplet cone spread when coughing.  
 9
 0.0
 1
 
 TEXTBOX
-921
-281
-1071
-336
+1122
+280
+1272
+335
 Angle (degree), mean and standard-deviation distance (m) of droplet cone spread when NOT coughing (parameterized as \"speaking\" events).  
 9
 0.0
 1
 
 TEXTBOX
-1061
-345
-1211
-389
+1262
+344
+1412
+388
 Number of droplets expelled during coughing and non-coughing (i.e., \"speaking\") events.
 9
 0.0
 1
 
 TEXTBOX
-889
-402
-1213
-531
+1090
+401
+1414
+530
 Defines the probability distribution for droplet sizes during coughing and non-coughing (i.e., \"speaking\") events. If \"chao,\" the distribution is defined using the findings of Chao et al. (2009). Otherwise, droplet sizes are drawn from a lognormal distribution with a log standard deviation of 3 micrometers, and a log mean defined here. \n\nChao, C.Y.H., Wan, M.P., Morawska, L., Johnson, G.R., Ritovski, Z.D., …, & Katoshevski, D. (2009). Characterization of expiration air jets and droplet size distributions immediately at the mouth opening. Aerosol Science 40(2009):122 – 133. https://doi.org/10.1016/j.jaerosci.2008.10.003.\n
 9
 0.0
 1
 
 TEXTBOX
-1110
-176
-1204
-198
+1311
+175
+1405
+197
 Droplet/virion decay rate (% / tick).
 9
 0.0
 1
 
 TEXTBOX
-553
-651
-703
-669
+754
+650
+904
+668
 Special
 14
 0.0
 1
 
 TEXTBOX
-556
-674
-834
-722
+757
+673
+1035
+721
 These are special-case inputs that instruct our model to run sub-models that fundamentally changes the way the model works.
 11
 0.0
 1
 
 TEXTBOX
-688
-727
-1259
-780
-If \"evalQuanta\" is turned on, the droplet fallout procedure will be carried out before the infection sub-model (so that only aerosolized droplets can trigger infection), and droplets are homogenously dispersed throughout the entirety of the simulated world immediately after expectoration. This can be used to find the combination of pathogen/droplet dynamics parameters that effectively recreate one quantum (i.e., the number of aerosolized infectious particles required to infect 1- 1/e % of a population) in a specific scenario. Currently evalQuanta is only coded to allow for an expectorate-height of 1.7 m.
+889
+726
+1460
+792
+If \"evalQuanta\" is turned on, the droplet fallout procedure will be carried out before the infection sub-model (so that only aerosolized droplets can trigger infection), and droplets are homogenously dispersed throughout the entirety of the simulated world immediately after expectoration. This can be used to find the combination of pathogen/droplet dynamics parameters that effectively recreate one quantum (i.e., the number of aerosolized infectious particles required to infect 1- 1/e % of a population) in a specific scenario. Currently evalQuanta is only coded to allow for an expectorate-height of 1.7 m. Note that if you are using evalQuanta, it is important that vacc-proportion and/or vacc-immunity be set to 0.
 9
 0.0
 1
 
 SWITCH
-556
-799
-682
-832
+757
+798
+883
+831
 choirSim
 choirSim
 1
@@ -3029,11 +3080,74 @@ choirSim
 -1000
 
 TEXTBOX
-689
-798
-1256
-886
+890
+797
+1457
+885
 \"choirSim\" is used to simulate the SARS-CoV-2 superspreading event that took place dascribed by Hamner et al. (2020). If turned on, the individual characteristics, simulation length, and world size scenario-specific inputs are forcefully changed to reflect this event. Additionally, as the simulation runs, the cohort of individuals is rearranged 4 times, on the fourth time they return to their original positions. \n\nHamner, L., Dubbel, P., Capron, I., Ross, A., Jordan, A., Lee, J., …, & Leibrand, H. (2020). High SARS-CoV-2 attack rate following exposure at a choir practice – Skagit County, Washington, March 2020. Morbidity and Mortality Weekly Report 69(2020):606-610. http://dx.doi.org/10.15585/mmwr.mm6919e6.
+9
+0.0
+1
+
+INPUTBOX
+491
+419
+586
+479
+vacc-proportion
+1.0
+1
+0
+Number
+
+INPUTBOX
+491
+478
+594
+538
+vacc-immunity
+1.0
+1
+0
+Number
+
+INPUTBOX
+491
+536
+640
+596
+vacc-virionRiskReduction
+0.75
+1
+0
+Number
+
+TEXTBOX
+593
+437
+743
+479
+The probability (0-1) that individuals will be vaccinated.
+9
+0.0
+1
+
+TEXTBOX
+599
+483
+737
+533
+The probability (0-1) that vaccination will confer complete immunity from infection.
+9
+0.0
+1
+
+TEXTBOX
+645
+544
+728
+641
+The proportional (0 - 1) reduction in virion infectiousness attributable to vaccination in infectious individuals.
 9
 0.0
 1
