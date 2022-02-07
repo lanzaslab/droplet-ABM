@@ -2,4 +2,4 @@ This is a spatially-explicit, stochastic agent-based model for simulating airbor
 
 The ODD (Overview, Design, and Description) document provides a detailed description of model mechanics.
 
-Download the project zip file to easily import the model into the Netlogo environment.
+Download the project zip file to easily import the model into the NetLogo environment.
